@@ -551,12 +551,20 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 	// when multiple goroutines render the same schemas concurrently.
 	renderKey := sp.getInlineRenderKey()
 	if ctx.StartRendering(renderKey) {
-		// We're already rendering this schema in THIS call chain - return ref to break the cycle
+		// Cycle detected — return a permissive placeholder instead of an
+		// error. For validation mode, the circular subtree is replaced with
+		// an unconstrained object schema so the non-circular parts can
+		// still be validated. Returning an error would abort validation
+		// entirely for any spec with recursive schemas (368 corpus specs).
+		if ctx.Mode == RenderingModeValidation {
+			return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}, nil
+		}
+
 		if sp.IsReference() {
 			return refNode(),
 				fmt.Errorf("schema render failure, circular reference: `%s`", sp.GetReference())
 		}
-		// For inline schemas, return an empty map to avoid infinite recursion
+
 		return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"},
 			fmt.Errorf("schema render failure, circular reference detected during inline rendering")
 	}
@@ -576,6 +584,17 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 			safe := idx.GetRolodex().GetSafeCircularReferences()
 			circ = append(circ, ignored...)
 			circ = append(circ, safe...)
+		}
+
+		// In validation mode, skip the pre-computed circular reference
+		// check — return a permissive placeholder so the non-circular
+		// parts can still be validated.
+		if ctx.Mode == RenderingModeValidation {
+			for _, c := range circ {
+				if sp.IsReference() && sp.GetReference() == c.LoopPoint.Definition {
+					return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}, nil
+				}
+			}
 		}
 
 		cirError := func(str string) error {
