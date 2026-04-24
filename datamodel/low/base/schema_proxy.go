@@ -225,6 +225,18 @@ func (sp *SchemaProxy) GetBuildError() error {
 	return sp.buildError
 }
 
+// ClearSchemaCache releases the cached schema built by Schema(), allowing the
+// memory to be reclaimed by GC. The next call to Schema() will rebuild from
+// the underlying YAML node. This is useful when processing many operations
+// sequentially and only needing one resolved schema at a time.
+//
+// Not safe to call concurrently with Schema().
+func (sp *SchemaProxy) ClearSchemaCache() {
+	sp.rendered.Store(nil)
+	sp.schemaOnce = sync.Once{}
+	sp.buildError = nil
+}
+
 func (sp *SchemaProxy) GetSchemaReferenceLocation() *index.NodeOrigin {
 	if sp.idx != nil {
 		origin := sp.idx.FindNodeOrigin(sp.vn)

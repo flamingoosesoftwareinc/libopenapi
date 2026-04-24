@@ -293,6 +293,27 @@ func (sp *SchemaProxy) Schema() *Schema {
 	return sp.rendered
 }
 
+// ClearSchemaCache releases the cached high-level schema, allowing GC to
+// reclaim the memory. The next call to Schema() will rebuild from the
+// low-level proxy. Also clears the low-level proxy cache.
+//
+// Not safe to call concurrently with Schema().
+func (sp *SchemaProxy) ClearSchemaCache() {
+	if sp == nil {
+		return
+	}
+
+	sp.lock.Lock()
+	defer sp.lock.Unlock()
+
+	sp.rendered = nil
+	sp.buildError = nil
+
+	if sp.schema != nil && sp.schema.Value != nil {
+		sp.schema.Value.ClearSchemaCache()
+	}
+}
+
 // IsReference returns true if the SchemaProxy is a reference to another Schema.
 func (sp *SchemaProxy) IsReference() bool {
 	if sp == nil {
